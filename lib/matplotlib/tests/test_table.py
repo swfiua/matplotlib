@@ -182,3 +182,37 @@ def test_auto_column():
     tb4.auto_set_font_size(False)
     tb4.set_fontsize(12)
     tb4.auto_set_column_width("-101")
+
+
+@image_comparison(baseline_images=['table_text'],
+                  extensions=['png'])
+def test_table_text():
+
+    dim = 1
+    cellText = [['count'] * dim] * dim
+
+    fig = plt.figure()
+
+    ax1 = fig.add_subplot(1, 1, 1)
+    ax1.axis('off')
+    ax1.table(cellText=cellText,
+              loc='center')
+
+@image_comparison(baseline_images=['table_text'],
+                  extensions=['png'])
+def test_table_text2():
+    """ Test text is same if table is created twice """
+    dim = 1
+    cellText = [['count'] * dim] * dim
+
+    fig = plt.figure()
+
+    ax = plt.axes()
+    ax.axis('off')
+    ax.table(cellText=cellText, loc='center')
+
+    plt.draw()
+    ax.clear()
+    ax.axis('off')
+    ax.table(cellText=cellText, loc='center')
+    plt.draw()
