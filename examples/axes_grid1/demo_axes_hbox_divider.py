@@ -1,3 +1,10 @@
+"""
+======================
+Demo Axes Hbox Divider
+======================
+
+Hbox Divider to arrange subplots.
+"""
 import numpy as np
 import matplotlib.pyplot as plt
 from mpl_toolkits.axes_grid1.axes_divider import HBoxDivider

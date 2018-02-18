@@ -1,3 +1,10 @@
+"""
+===========
+Close Event
+===========
+
+Example to show connecting events that occur when the figure closes.
+"""
 from __future__ import print_function
 import matplotlib.pyplot as plt
 

@@ -1,5 +1,4 @@
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function
 
 import io
 import warnings
@@ -7,11 +6,13 @@ from itertools import chain
 
 import numpy as np
 
+import pytest
+
 import matplotlib.pyplot as plt
 import matplotlib.patches as mpatches
 import matplotlib.lines as mlines
 import matplotlib.path as mpath
-import matplotlib.transforms as mtrans
+import matplotlib.transforms as mtransforms
 import matplotlib.collections as mcollections
 import matplotlib.artist as martist
 from matplotlib.testing.decorators import image_comparison
@@ -39,13 +40,13 @@ def test_patch_transform_of_none():
                          transform=None, alpha=0.5)
     assert e.is_transform_set() is True
     ax.add_patch(e)
-    assert isinstance(e._transform, mtrans.IdentityTransform)
+    assert isinstance(e._transform, mtransforms.IdentityTransform)
 
     # Providing an IdentityTransform puts the ellipse in device coordinates.
     e = mpatches.Ellipse(xy_pix, width=100, height=100,
-                         transform=mtrans.IdentityTransform(), alpha=0.5)
+                         transform=mtransforms.IdentityTransform(), alpha=0.5)
     ax.add_patch(e)
-    assert isinstance(e._transform, mtrans.IdentityTransform)
+    assert isinstance(e._transform, mtransforms.IdentityTransform)
 
     # Not providing a transform, and then subsequently "get_transform" should
     # not mean that "is_transform_set".
@@ -84,14 +85,15 @@ def test_collection_transform_of_none():
                                      alpha=0.5)
     c.set_transform(None)
     ax.add_collection(c)
-    assert isinstance(c.get_transform(), mtrans.IdentityTransform)
+    assert isinstance(c.get_transform(), mtransforms.IdentityTransform)
 
     # providing an IdentityTransform puts the ellipse in device coordinates
     e = mpatches.Ellipse(xy_pix, width=100, height=100)
-    c = mcollections.PatchCollection([e], transform=mtrans.IdentityTransform(),
-                                     alpha=0.5)
+    c = mcollections.PatchCollection([e],
+                                 transform=mtransforms.IdentityTransform(),
+                                 alpha=0.5)
     ax.add_collection(c)
-    assert isinstance(c._transOffset, mtrans.IdentityTransform)
+    assert isinstance(c._transOffset, mtransforms.IdentityTransform)
 
 
 @image_comparison(baseline_images=["clip_path_clipping"], remove_text=True)
@@ -244,4 +246,37 @@ def test_setp():
     # Check `file` argument
     sio = io.StringIO()
     plt.setp(lines1, 'zorder', file=sio)
-    assert sio.getvalue() == '  zorder: any number \n'
+    assert sio.getvalue() == '  zorder: float \n'
+
+
+def test_None_zorder():
+    fig, ax = plt.subplots()
+    ln, = ax.plot(range(5), zorder=None)
+    assert ln.get_zorder() == mlines.Line2D.zorder
+    ln.set_zorder(123456)
+    assert ln.get_zorder() == 123456
+    ln.set_zorder(None)
+    assert ln.get_zorder() == mlines.Line2D.zorder
+
+
+@pytest.mark.parametrize('accept_clause, expected', [
+    ('', 'unknown'),
+    ("ACCEPTS: [ '-' | '--' | '-.' ]", "[ '-' | '--' | '-.' ] "),
+    ('ACCEPTS: Some description.', 'Some description. '),
+    ('.. ACCEPTS: Some description.', 'Some description. '),
+])
+def test_artist_inspector_get_valid_values(accept_clause, expected):
+    class TestArtist(martist.Artist):
+        def set_f(self):
+            pass
+
+    func = TestArtist.set_f
+    if hasattr(func, '__func__'):
+        func = func.__func__  # python 2 must write via __func__.__doc__
+    func.__doc__ = """
+    Some text.
+
+    %s
+    """ % accept_clause
+    valid_values = martist.ArtistInspector(TestArtist).get_valid_values('f')
+    assert valid_values == expected

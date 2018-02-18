@@ -1,5 +1,4 @@
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function
 import copy
 
 import numpy as np
@@ -45,6 +44,27 @@ def test_contains_points_negative_radius():
     assert np.all(result == expected)
 
 
+def test_point_in_path_nan():
+    box = np.array([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])
+    p = Path(box)
+    test = np.array([[np.nan, 0.5]])
+    contains = p.contains_points(test)
+    assert len(contains) == 1
+    assert not contains[0]
+
+
+def test_nonlinear_containment():
+    fig, ax = plt.subplots()
+    ax.set(xscale="log", ylim=(0, 1))
+    polygon = ax.axvspan(1, 10)
+    assert polygon.get_path().contains_point(
+        ax.transData.transform_point((5, .5)), ax.transData)
+    assert not polygon.get_path().contains_point(
+        ax.transData.transform_point((.5, .5)), ax.transData)
+    assert not polygon.get_path().contains_point(
+        ax.transData.transform_point((50, .5)), ax.transData)
+
+
 @image_comparison(baseline_images=['path_clipping'],
                   extensions=['svg'], remove_text=True)
 def test_path_clipping():
@@ -66,22 +86,15 @@ def test_path_clipping():
             xy, facecolor='none', edgecolor='red', closed=True))
 
 
-def test_point_in_path_nan():
-    box = np.array([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]])
-    p = Path(box)
-    test = np.array([[np.nan, 0.5]])
-    contains = p.contains_points(test)
-    assert len(contains) == 1
-    assert not contains[0]
-
-
-@image_comparison(baseline_images=['semi_log_with_zero'], extensions=['png'])
+@image_comparison(baseline_images=['semi_log_with_zero'], extensions=['png'],
+                  style='mpl20')
 def test_log_transform_with_zero():
     x = np.arange(-10, 10)
     y = (1.0 - 1.0/(x**2+1))**20
 
     fig, ax = plt.subplots()
-    ax.semilogy(x, y, "-o", lw=15)
+    ax.semilogy(x, y, "-o", lw=15, markeredgecolor='k')
+    ax.set_ylim(1e-7, 1)
     ax.grid(True)
 
 
@@ -114,6 +127,19 @@ def test_marker_paths_pdf():
                  np.ones(N))
     plt.xlim(-1, N)
     plt.ylim(-1, 7)
+
+
+@image_comparison(baseline_images=['nan_path'], style='default',
+                  remove_text=True, extensions=['pdf', 'svg', 'eps', 'png'])
+def test_nan_isolated_points():
+
+    y0 = [0, np.nan, 2, np.nan, 4, 5, 6]
+    y1 = [np.nan, 7, np.nan, 9, 10, np.nan, 12]
+
+    fig, ax = plt.subplots()
+
+    ax.plot(y0, '-o')
+    ax.plot(y1, '-o')
 
 
 def test_path_no_doubled_point_in_to_polygon():
@@ -180,3 +206,15 @@ def test_path_deepcopy():
     path2 = Path(verts, codes)
     copy.deepcopy(path1)
     copy.deepcopy(path2)
+
+
+@pytest.mark.parametrize('offset', range(-720, 361, 45))
+def test_full_arc(offset):
+    low = offset
+    high = 360 + offset
+
+    path = Path.arc(low, high)
+    mins = np.min(path.vertices, axis=0)
+    maxs = np.max(path.vertices, axis=0)
+    np.testing.assert_allclose(mins, -1)
+    assert np.allclose(maxs, 1)

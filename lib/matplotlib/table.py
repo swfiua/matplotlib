@@ -30,7 +30,6 @@ import warnings
 from . import artist
 from .artist import Artist, allow_rasterization
 from .patches import Rectangle
-from .cbook import is_string_like
 from matplotlib import docstring
 from .text import Text
 from .transforms import Bbox
@@ -208,18 +207,16 @@ class CustomCell(Cell):
         else:
             for edge in value:
                 if edge not in self._edges:
-                    msg = ('Invalid edge param {0}, must only be one of'
-                           ' {1} or string of {2}.').format(
-                                   value,
-                                   ", ".join(self._edge_aliases),
-                                   ", ".join(self._edges),
-                                   )
-                    raise ValueError(msg)
+                    raise ValueError('Invalid edge param {}, must only be one '
+                                     'of {} or string of {}'.format(
+                                         value,
+                                         ", ".join(self._edge_aliases),
+                                         ", ".join(self._edges)))
             self._visible_edges = value
         self.stale = True
 
     def get_path(self):
-        'Return a path where the edges specificed by _visible_edges are drawn'
+        'Return a path where the edges specified by _visible_edges are drawn'
 
         codes = [Path.MOVETO]
 
@@ -279,12 +276,12 @@ class Table(Artist):
 
         Artist.__init__(self)
 
-        if is_string_like(loc) and loc not in self.codes:
+        if isinstance(loc, six.string_types) and loc not in self.codes:
             warnings.warn('Unrecognized location %s. Falling back on '
                           'bottom; valid locations are\n%s\t' %
                           (loc, '\n\t'.join(self.codes)))
             loc = 'bottom'
-        if is_string_like(loc):
+        if isinstance(loc, six.string_types):
             loc = self.codes.get(loc, 1)
         self.set_figure(ax.figure)
         self._axes = ax
@@ -304,16 +301,51 @@ class Table(Artist):
         self.set_clip_on(False)
 
     def add_cell(self, row, col, *args, **kwargs):
-        """ Add a cell to the table. """
-        xy = (0, 0)
+        """
+        Add a cell to the table.
 
+        Parameters
+        ----------
+        row : int
+            Row index
+        col : int
+            Column index
+
+        Returns
+        -------
+        `CustomCell`: Automatically created cell
+
+        """
+        xy = (0, 0)
         cell = CustomCell(xy, visible_edges=self.edges, *args, **kwargs)
+        self[row, col] = cell
+        return cell
+
+    def __setitem__(self, position, cell):
+        """
+        Set a customcell in a given position
+        """
+        if not isinstance(cell, CustomCell):
+            raise TypeError('Table only accepts CustomCell')
+        try:
+            row, col = position[0], position[1]
+        except Exception:
+            raise KeyError('Only tuples length 2 are accepted as coordinates')
         cell.set_figure(self.figure)
         cell.set_transform(self.get_transform())
-
         cell.set_clip_on(False)
         self._cells[row, col] = cell
         self.stale = True
+
+    def __getitem__(self, position):
+        """
+        Retreive a custom cell from a given position
+        """
+        try:
+            row, col = position[0], position[1]
+        except Exception:
+            raise KeyError('Only tuples length 2 are accepted as coordinates')
+        return self._cells[row, col]
 
     @property
     def edges(self):
@@ -626,16 +658,16 @@ def table(ax,
     cols = len(cellText[0])
     for row in cellText:
         if len(row) != cols:
-            msg = "Each row in 'cellText' must have {0} columns"
-            raise ValueError(msg.format(cols))
+            raise ValueError("Each row in 'cellText' must have {} columns"
+                             .format(cols))
 
     if cellColours is not None:
         if len(cellColours) != rows:
-            raise ValueError("'cellColours' must have {0} rows".format(rows))
+            raise ValueError("'cellColours' must have {} rows".format(rows))
         for row in cellColours:
             if len(row) != cols:
-                msg = "Each row in 'cellColours' must have {0} columns"
-                raise ValueError(msg.format(cols))
+                raise ValueError("Each row in 'cellColours' must have {} "
+                                 "columns".format(cols))
     else:
         cellColours = ['w' * cols] * rows
 

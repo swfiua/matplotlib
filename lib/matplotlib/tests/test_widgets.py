@@ -1,5 +1,4 @@
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function
 
 try:
     # mock in python 3.3+
@@ -128,7 +127,7 @@ def test_ellipse():
                     key=' ')
     do_event(tool, 'onmove', xdata=30, ydata=30, button=1)
     do_event(tool, 'release', xdata=30, ydata=30, button=1)
-    assert tool.extents == (120, 170, 120, 170), tool.extents
+    assert tool.extents == (120, 170, 120, 170)
 
     # create from center
     do_event(tool, 'on_key_press', xdata=100, ydata=100, button=1,
@@ -138,7 +137,7 @@ def test_ellipse():
     do_event(tool, 'release', xdata=125, ydata=125, button=1)
     do_event(tool, 'on_key_release', xdata=100, ydata=100, button=1,
                     key='control')
-    assert tool.extents == (75, 125, 75, 125), tool.extents
+    assert tool.extents == (75, 125, 75, 125)
 
     # create a square
     do_event(tool, 'on_key_press', xdata=10, ydata=10, button=1,
@@ -160,7 +159,7 @@ def test_ellipse():
     do_event(tool, 'on_key_release', xdata=100, ydata=100, button=1,
                       key='ctrl+shift')
     extents = [int(e) for e in tool.extents]
-    assert extents == [70, 129, 70, 130], extents
+    assert extents == [70, 129, 70, 130]
 
     assert tool.geometry.shape == (2, 73)
     assert_allclose(tool.geometry[:, 0], [70., 100])
@@ -313,3 +312,139 @@ def test_slider_valmin_valmax():
     slider = widgets.Slider(ax=ax, label='', valmin=0.0, valmax=24.0,
                             valinit=25.0)
     assert slider.val == slider.valmax
+
+
+def check_polygon_selector(event_sequence, expected_result, selections_count):
+    """Helper function to test Polygon Selector
+
+    Parameters
+    ----------
+    event_sequence : list of tuples (etype, dict())
+        A sequence of events to perform. The sequence is a list of tuples
+        where the first element of the tuple is an etype (e.g., 'onmove',
+        'press', etc.), and the second element of the tuple is a dictionary of
+         the arguments for the event (e.g., xdata=5, key='shift', etc.).
+    expected_result : list of vertices (xdata, ydata)
+        The list of vertices that are expected to result from the event
+        sequence.
+    selections_count : int
+        Wait for the tool to call its `onselect` function `selections_count`
+        times, before comparing the result to the `expected_result`
+    """
+    ax = get_ax()
+
+    ax._selections_count = 0
+
+    def onselect(vertices):
+        ax._selections_count += 1
+        ax._current_result = vertices
+
+    tool = widgets.PolygonSelector(ax, onselect)
+
+    for (etype, event_args) in event_sequence:
+        do_event(tool, etype, **event_args)
+
+    assert ax._selections_count == selections_count
+    assert ax._current_result == expected_result
+
+
+def polygon_place_vertex(xdata, ydata):
+    return [('onmove', dict(xdata=xdata, ydata=ydata)),
+            ('press', dict(xdata=xdata, ydata=ydata)),
+            ('release', dict(xdata=xdata, ydata=ydata))]
+
+
+def test_polygon_selector():
+    # Simple polygon
+    expected_result = [(50, 50), (150, 50), (50, 150)]
+    event_sequence = (polygon_place_vertex(50, 50)
+                      + polygon_place_vertex(150, 50)
+                      + polygon_place_vertex(50, 150)
+                      + polygon_place_vertex(50, 50))
+    check_polygon_selector(event_sequence, expected_result, 1)
+
+    # Move first vertex before completing the polygon.
+    expected_result = [(75, 50), (150, 50), (50, 150)]
+    event_sequence = (polygon_place_vertex(50, 50)
+                      + polygon_place_vertex(150, 50)
+                      + [('on_key_press', dict(key='control')),
+                         ('onmove', dict(xdata=50, ydata=50)),
+                         ('press', dict(xdata=50, ydata=50)),
+                         ('onmove', dict(xdata=75, ydata=50)),
+                         ('release', dict(xdata=75, ydata=50)),
+                         ('on_key_release', dict(key='control'))]
+                      + polygon_place_vertex(50, 150)
+                      + polygon_place_vertex(75, 50))
+    check_polygon_selector(event_sequence, expected_result, 1)
+
+    # Move first two vertices at once before completing the polygon.
+    expected_result = [(50, 75), (150, 75), (50, 150)]
+    event_sequence = (polygon_place_vertex(50, 50)
+                      + polygon_place_vertex(150, 50)
+                      + [('on_key_press', dict(key='shift')),
+                         ('onmove', dict(xdata=100, ydata=100)),
+                         ('press', dict(xdata=100, ydata=100)),
+                         ('onmove', dict(xdata=100, ydata=125)),
+                         ('release', dict(xdata=100, ydata=125)),
+                         ('on_key_release', dict(key='shift'))]
+                      + polygon_place_vertex(50, 150)
+                      + polygon_place_vertex(50, 75))
+    check_polygon_selector(event_sequence, expected_result, 1)
+
+    # Move first vertex after completing the polygon.
+    expected_result = [(75, 50), (150, 50), (50, 150)]
+    event_sequence = (polygon_place_vertex(50, 50)
+                      + polygon_place_vertex(150, 50)
+                      + polygon_place_vertex(50, 150)
+                      + polygon_place_vertex(50, 50)
+                      + [('onmove', dict(xdata=50, ydata=50)),
+                         ('press', dict(xdata=50, ydata=50)),
+                         ('onmove', dict(xdata=75, ydata=50)),
+                         ('release', dict(xdata=75, ydata=50))])
+    check_polygon_selector(event_sequence, expected_result, 2)
+
+    # Move all vertices after completing the polygon.
+    expected_result = [(75, 75), (175, 75), (75, 175)]
+    event_sequence = (polygon_place_vertex(50, 50)
+                      + polygon_place_vertex(150, 50)
+                      + polygon_place_vertex(50, 150)
+                      + polygon_place_vertex(50, 50)
+                      + [('on_key_press', dict(key='shift')),
+                         ('onmove', dict(xdata=100, ydata=100)),
+                         ('press', dict(xdata=100, ydata=100)),
+                         ('onmove', dict(xdata=125, ydata=125)),
+                         ('release', dict(xdata=125, ydata=125)),
+                         ('on_key_release', dict(key='shift'))])
+    check_polygon_selector(event_sequence, expected_result, 2)
+
+    # Try to move a vertex and move all before placing any vertices.
+    expected_result = [(50, 50), (150, 50), (50, 150)]
+    event_sequence = ([('on_key_press', dict(key='control')),
+                       ('onmove', dict(xdata=100, ydata=100)),
+                       ('press', dict(xdata=100, ydata=100)),
+                       ('onmove', dict(xdata=125, ydata=125)),
+                       ('release', dict(xdata=125, ydata=125)),
+                       ('on_key_release', dict(key='control')),
+                       ('on_key_press', dict(key='shift')),
+                       ('onmove', dict(xdata=100, ydata=100)),
+                       ('press', dict(xdata=100, ydata=100)),
+                       ('onmove', dict(xdata=125, ydata=125)),
+                       ('release', dict(xdata=125, ydata=125)),
+                       ('on_key_release', dict(key='shift'))]
+                      + polygon_place_vertex(50, 50)
+                      + polygon_place_vertex(150, 50)
+                      + polygon_place_vertex(50, 150)
+                      + polygon_place_vertex(50, 50))
+    check_polygon_selector(event_sequence, expected_result, 1)
+
+    # Try to place vertex out-of-bounds, then reset, and start a new polygon.
+    expected_result = [(50, 50), (150, 50), (50, 150)]
+    event_sequence = (polygon_place_vertex(50, 50)
+                      + polygon_place_vertex(250, 50)
+                      + [('on_key_press', dict(key='escape')),
+                         ('on_key_release', dict(key='escape'))]
+                      + polygon_place_vertex(50, 50)
+                      + polygon_place_vertex(150, 50)
+                      + polygon_place_vertex(50, 150)
+                      + polygon_place_vertex(50, 50))
+    check_polygon_selector(event_sequence, expected_result, 1)

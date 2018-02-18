@@ -26,11 +26,11 @@ from __future__ import (absolute_import, division, print_function,
                         unicode_literals)
 
 import six
-from matplotlib import verbose
-from matplotlib.cbook import is_sequence_of_strings
 import matplotlib.lines as mlines
 
-import warnings
+import logging
+
+_log = logging.getLogger(__name__)
 
 
 class BlockingInput(object):
@@ -40,8 +40,6 @@ class BlockingInput(object):
     """
     def __init__(self, fig, eventslist=()):
         self.fig = fig
-        if not is_sequence_of_strings(eventslist):
-            raise ValueError("Requires a sequence of event name strings")
         self.eventslist = eventslist
 
     def on_event(self, event):
@@ -53,8 +51,7 @@ class BlockingInput(object):
         # overkill for the base class, but this is consistent with
         # subclasses
         self.add_event(event)
-
-        verbose.report("Event %i" % len(self.events))
+        _log.info("Event %i", len(self.events))
 
         # This will extract info from events
         self.post_event()
@@ -104,8 +101,9 @@ class BlockingInput(object):
         self.events = []
         self.callbacks = []
 
-        # Ensure that the figure is shown
-        self.fig.show()
+        if hasattr(self.fig.canvas, "manager"):
+            # Ensure that the figure is shown, if we are managing it.
+            self.fig.show()
 
         # connect the events to the on_event function call
         for n in self.eventslist:
@@ -150,7 +148,7 @@ class BlockingMouseInput(BlockingInput):
         This will be called to process events
         """
         if len(self.events) == 0:
-            warnings.warn("No events yet")
+            _log.warning("No events yet")
         elif self.events[-1].name == 'key_press_event':
             self.key_event()
         else:
@@ -232,8 +230,7 @@ class BlockingMouseInput(BlockingInput):
         This add the coordinates of an event to the list of clicks
         """
         self.clicks.append((event.xdata, event.ydata))
-
-        verbose.report("input %i: %f,%f" %
+        _log.info("input %i: %f,%f" %
                        (len(self.clicks), event.xdata, event.ydata))
 
         # If desired plot up click
@@ -363,7 +360,7 @@ class BlockingKeyMouseInput(BlockingInput):
         Determines if it is a key event
         """
         if len(self.events) == 0:
-            warnings.warn("No events yet")
+            _log.warning("No events yet")
         else:
             self.keyormouse = self.events[-1].name == 'key_press_event'
 

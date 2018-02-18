@@ -1,4 +1,8 @@
 """
+==================
+Demo Floating Axis
+==================
+
 Axis within rectangular frame
 
 The following code demonstrates how to put a floating polar curve within a
@@ -15,10 +19,8 @@ from mpl_toolkits.axisartist import GridHelperCurveLinear
 
 
 def curvelinear_test2(fig):
+    """Polar projection, but in a rectangular box.
     """
-    polar projection, but in a rectangular box.
-    """
-    global ax1
     # see demo_curvelinear_grid.py for details
     tr = Affine2D().scale(np.pi / 180., 1.) + PolarAxes.PolarTransform()
 

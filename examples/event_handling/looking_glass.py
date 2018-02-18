@@ -1,3 +1,10 @@
+"""
+=============
+Looking Glass
+=============
+
+Example using mouse events to simulate a looking glass for inspecting data.
+"""
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.patches as patches

@@ -1,14 +1,14 @@
 """
+==============
+SVG Filter Pie
+==============
+
 Demonstrate SVG filtering effects which might be used with mpl.
 The pie chart drawing code is borrowed from pie_demo.py
 
 Note that the filtering effects are only effective if your svg renderer
 support it.
 """
-
-
-import matplotlib
-matplotlib.use("Svg")
 
 import matplotlib.pyplot as plt
 from matplotlib.patches import Shadow

@@ -10,8 +10,9 @@ from __future__ import (absolute_import, division, print_function,
 import six
 
 from matplotlib.backend_bases import RendererBase
-from matplotlib import (
-    colors as mcolors, patches as mpatches, transforms as mtransforms)
+from matplotlib import colors as mcolors
+from matplotlib import patches as mpatches
+from matplotlib import transforms as mtransforms
 
 
 class AbstractPathEffect(object):
@@ -354,7 +355,6 @@ class SimpleLineShadow(AbstractPathEffect):
 
         gc0.set_foreground(shadow_rgbFace)
         gc0.set_alpha(self._alpha)
-        gc0.set_linestyle("solid")
 
         gc0 = self._update_gc(gc0, self._gc)
         renderer.draw_path(gc0, tpath, affine0, fill_color)
@@ -386,6 +386,8 @@ class PathPatchEffect(AbstractPathEffect):
         affine = self._offset_transform(renderer, affine)
         self.patch._path = tpath
         self.patch.set_transform(affine)
-        self.patch.set_clip_box(gc._cliprect)
-        self.patch.set_clip_path(gc._clippath)
+        self.patch.set_clip_box(gc.get_clip_rectangle())
+        clip_path = gc.get_clip_path()
+        if clip_path:
+            self.patch.set_clip_path(*clip_path)
         self.patch.draw(renderer)

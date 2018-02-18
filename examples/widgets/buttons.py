@@ -1,3 +1,13 @@
+"""
+=======
+Buttons
+=======
+
+Constructing a simple button GUI to modify a sine wave.
+
+The ``next`` and ``previous`` button widget helps visualize the wave with
+new frequencies.
+"""
 
 import numpy as np
 import matplotlib.pyplot as plt

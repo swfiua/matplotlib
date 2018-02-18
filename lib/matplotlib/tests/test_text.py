@@ -1,20 +1,22 @@
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function
 
 import six
+
+import io
 import warnings
 
 import numpy as np
 from numpy.testing import assert_almost_equal
 import pytest
 
-from matplotlib.transforms import Bbox
 import matplotlib
 import matplotlib.pyplot as plt
 from matplotlib.testing.decorators import image_comparison
-from matplotlib.figure import Figure
-from matplotlib.text import Annotation, Text
-from matplotlib.backends.backend_agg import RendererAgg
+
+
+needs_usetex = pytest.mark.xfail(
+    not matplotlib.checkdep_usetex(True),
+    reason="This test needs a TeX installation")
 
 
 @image_comparison(baseline_images=['font_styles'])
@@ -30,7 +32,7 @@ def test_font_styles():
     from matplotlib.font_manager import FontProperties, findfont
     warnings.filterwarnings(
         'ignore',
-        "findfont: Font family \[u?'Foo'\] not found. Falling back to .",
+        r"findfont: Font family \[u?'Foo'\] not found. Falling back to .",
         UserWarning,
         module='matplotlib.font_manager')
 
@@ -174,7 +176,7 @@ def test_contains():
 
     # draw the text. This is important, as the contains method can only work
     # when a renderer exists.
-    plt.draw()
+    fig.canvas.draw()
 
     for x, y in zip(xs.flat, ys.flat):
         mevent.x, mevent.y = plt.gca().transAxes.transform_point([x, y])
@@ -238,12 +240,12 @@ def test_set_position():
     # test set_position
     ann = ax.annotate(
         'test', (0, 0), xytext=(0, 0), textcoords='figure pixels')
-    plt.draw()
+    fig.canvas.draw()
 
     init_pos = ann.get_window_extent(fig.canvas.renderer)
     shift_val = 15
     ann.set_position((shift_val, shift_val))
-    plt.draw()
+    fig.canvas.draw()
     post_pos = ann.get_window_extent(fig.canvas.renderer)
 
     for a, b in zip(init_pos.min, post_pos.min):
@@ -252,12 +254,12 @@ def test_set_position():
     # test xyann
     ann = ax.annotate(
         'test', (0, 0), xytext=(0, 0), textcoords='figure pixels')
-    plt.draw()
+    fig.canvas.draw()
 
     init_pos = ann.get_window_extent(fig.canvas.renderer)
     shift_val = 15
     ann.xyann = (shift_val, shift_val)
-    plt.draw()
+    fig.canvas.draw()
     post_pos = ann.get_window_extent(fig.canvas.renderer)
 
     for a, b in zip(init_pos.min, post_pos.min):
@@ -396,7 +398,6 @@ def test_agg_text_clip():
     for x, y in np.random.rand(10, 2):
         ax1.text(x, y, "foo", clip_on=True)
         ax2.text(x, y, "foo")
-    plt.show()
 
 
 def test_text_size_binding():
@@ -421,3 +422,55 @@ def test_font_scaling():
 
     for i, fs in enumerate(range(4, 43, 2)):
         ax.text(0.1, i*30, "{fs} pt font size".format(fs=fs), fontsize=fs)
+
+
+@pytest.mark.parametrize('spacing1, spacing2', [(0.4, 2), (2, 0.4), (2, 2)])
+def test_two_2line_texts(spacing1, spacing2):
+    text_string = 'line1\nline2'
+    fig = plt.figure()
+    renderer = fig.canvas.get_renderer()
+
+    text1 = plt.text(0.25, 0.5, text_string, linespacing=spacing1)
+    text2 = plt.text(0.25, 0.5, text_string, linespacing=spacing2)
+    fig.canvas.draw()
+
+    box1 = text1.get_window_extent(renderer=renderer)
+    box2 = text2.get_window_extent(renderer=renderer)
+
+    # line spacing only affects height
+    assert box1.width == box2.width
+    if (spacing1 == spacing2):
+        assert box1.height == box2.height
+    else:
+        assert box1.height != box2.height
+
+
+def test_nonfinite_pos():
+    fig, ax = plt.subplots()
+    ax.text(0, np.nan, 'nan')
+    ax.text(np.inf, 0, 'inf')
+    fig.canvas.draw()
+
+
+def test_hinting_factor_backends():
+    plt.rcParams['text.hinting_factor'] = 1
+    fig = plt.figure()
+    t = fig.text(0.5, 0.5, 'some text')
+
+    fig.savefig(io.BytesIO(), format='svg')
+    expected = t.get_window_extent().intervalx
+
+    fig.savefig(io.BytesIO(), format='png')
+    # Backends should apply hinting_factor consistently (within 10%).
+    np.testing.assert_allclose(t.get_window_extent().intervalx, expected,
+                               rtol=0.1)
+
+
+@needs_usetex
+def test_single_artist_usetex():
+    # Check that a single artist marked with usetex does not get passed through
+    # the mathtext parser at all (for the Agg backend) (the mathtext parser
+    # currently fails to parse \frac12, requiring \frac{1}{2} instead).
+    fig, ax = plt.subplots()
+    ax.text(.5, .5, r"$\frac12$", usetex=True)
+    fig.canvas.draw()

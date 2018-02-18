@@ -1,15 +1,12 @@
-"""
-A module for dealing with the polylines used throughout matplotlib.
+r"""
+A module for dealing with the polylines used throughout Matplotlib.
 
-The primary class for polyline handling in matplotlib is :class:`Path`.
-Almost all vector drawing makes use of Paths somewhere in the drawing
-pipeline.
+The primary class for polyline handling in Matplotlib is `Path`.  Almost all
+vector drawing makes use of `Path`\s somewhere in the drawing pipeline.
 
-Whilst a :class:`Path` instance itself cannot be drawn, there exists
-:class:`~matplotlib.artist.Artist` subclasses which can be used for
-convenient Path visualisation - the two most frequently used of these are
-:class:`~matplotlib.patches.PathPatch` and
-:class:`~matplotlib.collections.PathCollection`.
+Whilst a `Path` instance itself cannot be drawn, some `~.Artist` subclasses,
+such as `~.PathPatch` and `~.PathCollection`, can be used for convenient `Path`
+visualisation.
 """
 
 from __future__ import (absolute_import, division, print_function,
@@ -17,14 +14,14 @@ from __future__ import (absolute_import, division, print_function,
 
 import six
 
-import math
 from weakref import WeakValueDictionary
+
+from functools import lru_cache
 
 import numpy as np
 
-from matplotlib import _path
-from matplotlib.cbook import simple_linear_interpolation, maxdict
-from matplotlib import rcParams
+from . import _path, rcParams
+from .cbook import _to_unmasked_float_array, simple_linear_interpolation
 
 
 class Path(object):
@@ -70,6 +67,9 @@ class Path(object):
     since many :class:`Path` objects, as an optimization, do not store a
     *codes* at all, but have a default one provided for them by
     :meth:`iter_segments`.
+
+    Some behavior of Path objects can be controlled by rcParams. See
+    the rcParams whose keys contain 'path.'.
 
     .. note::
 
@@ -130,25 +130,19 @@ class Path(object):
             Makes the path behave in an immutable way and sets the vertices
             and codes as read-only arrays.
         """
-        if isinstance(vertices, np.ma.MaskedArray):
-            vertices = vertices.astype(float).filled(np.nan)
-        else:
-            vertices = np.asarray(vertices, float)
-
+        vertices = _to_unmasked_float_array(vertices)
         if (vertices.ndim != 2) or (vertices.shape[1] != 2):
-            msg = "'vertices' must be a 2D list or array with shape Nx2"
-            raise ValueError(msg)
+            raise ValueError(
+                "'vertices' must be a 2D list or array with shape Nx2")
 
         if codes is not None:
             codes = np.asarray(codes, self.code_type)
             if (codes.ndim != 1) or len(codes) != len(vertices):
-                msg = ("'codes' must be a 1D list or array with the same"
-                       " length of 'vertices'")
-                raise ValueError(msg)
+                raise ValueError("'codes' must be a 1D list or array with the "
+                                 "same length of 'vertices'")
             if len(codes) and codes[0] != self.MOVETO:
-                msg = ("The first element of 'code' must be equal to 'MOVETO':"
-                       " {0}")
-                raise ValueError(msg.format(self.MOVETO))
+                raise ValueError("The first element of 'code' must be equal "
+                                 "to 'MOVETO' ({})".format(self.MOVETO))
         elif closed:
             codes = np.empty(len(vertices), dtype=self.code_type)
             codes[0] = self.MOVETO
@@ -186,11 +180,7 @@ class Path(object):
         """
         internals = internals or {}
         pth = cls.__new__(cls)
-        if isinstance(verts, np.ma.MaskedArray):
-            verts = verts.astype(float).filled(np.nan)
-        else:
-            verts = np.asarray(verts, float)
-        pth._vertices = verts
+        pth._vertices = _to_unmasked_float_array(verts)
         pth._codes = codes
         pth._readonly = internals.pop('readonly', False)
         pth.should_simplify = internals.pop('should_simplify', True)
@@ -207,12 +197,13 @@ class Path(object):
         return pth
 
     def _update_values(self):
-        self._should_simplify = (
-            rcParams['path.simplify'] and
-            (len(self._vertices) >= 128 and
-             (self._codes is None or np.all(self._codes <= Path.LINETO)))
-        )
         self._simplify_threshold = rcParams['path.simplify_threshold']
+        self._should_simplify = (
+            self._simplify_threshold > 0 and
+            rcParams['path.simplify'] and
+            len(self._vertices) >= 128 and
+            (self._codes is None or np.all(self._codes <= Path.LINETO))
+        )
         self._has_nonfinite = not np.isfinite(self._vertices).all()
 
     @property
@@ -318,7 +309,7 @@ class Path(object):
         numsides x 2) numpy array of vertices.  Return object is a
         :class:`Path`
 
-        .. plot:: mpl_examples/api/histogram_path_demo.py
+        .. plot:: gallery/api/histogram_path.py
 
         """
 
@@ -404,7 +395,8 @@ class Path(object):
             If True, perform simplification, to remove
              vertices that do not affect the appearance of the path.  If
              False, perform no simplification.  If None, use the
-             should_simplify member variable.
+             should_simplify member variable.  See also the rcParams
+             path.simplify and path.simplify_threshold.
         curves : {True, False}, optional
             If True, curve segments will be returned as curve
             segments.  If False, all curves will be converted to line
@@ -483,30 +475,33 @@ class Path(object):
 
     def contains_point(self, point, transform=None, radius=0.0):
         """
-        Returns *True* if the path contains the given point.
+        Returns whether the (closed) path contains the given point.
 
-        If *transform* is not *None*, the path will be transformed
-        before performing the test.
+        If *transform* is not ``None``, the path will be transformed before
+        performing the test.
 
-        *radius* allows the path to be made slightly larger or
-        smaller.
+        *radius* allows the path to be made slightly larger or smaller.
         """
         if transform is not None:
             transform = transform.frozen()
-        result = _path.point_in_path(point[0], point[1], radius, self,
-                                     transform)
-        return result
+        # `point_in_path` does not handle nonlinear transforms, so we
+        # transform the path ourselves.  If `transform` is affine, letting
+        # `point_in_path` handle the transform avoids allocating an extra
+        # buffer.
+        if transform and not transform.is_affine:
+            self = transform.transform_path(self)
+            transform = None
+        return _path.point_in_path(point[0], point[1], radius, self, transform)
 
     def contains_points(self, points, transform=None, radius=0.0):
         """
-        Returns a bool array which is *True* if the path contains the
-        corresponding point.
+        Returns a bool array which is ``True`` if the (closed) path contains
+        the corresponding point.
 
-        If *transform* is not *None*, the path will be transformed
-        before performing the test.
+        If *transform* is not ``None``, the path will be transformed before
+        performing the test.
 
-        *radius* allows the path to be made slightly larger or
-        smaller.
+        *radius* allows the path to be made slightly larger or smaller.
         """
         if transform is not None:
             transform = transform.frozen()
@@ -515,10 +510,10 @@ class Path(object):
 
     def contains_path(self, path, transform=None):
         """
-        Returns *True* if this path completely contains the given path.
+        Returns whether this (closed) path completely contains the given path.
 
-        If *transform* is not *None*, the path will be transformed
-        before performing the test.
+        If *transform* is not ``None``, the path will be transformed before
+        performing the test.
         """
         if transform is not None:
             transform = transform.frozen()
@@ -755,7 +750,7 @@ class Path(object):
         """
         MAGIC = 0.2652031
         SQRTHALF = np.sqrt(0.5)
-        MAGIC45 = np.sqrt((MAGIC*MAGIC) / 2.0)
+        MAGIC45 = SQRTHALF * MAGIC
 
         vertices = np.array([[0.0, -1.0],
 
@@ -815,7 +810,7 @@ class Path(object):
         if cls._unit_circle_righthalf is None:
             MAGIC = 0.2652031
             SQRTHALF = np.sqrt(0.5)
-            MAGIC45 = np.sqrt((MAGIC*MAGIC) / 2.0)
+            MAGIC45 = SQRTHALF * MAGIC
 
             vertices = np.array(
                 [[0.0, -1.0],
@@ -853,6 +848,10 @@ class Path(object):
         Return an arc on the unit circle from angle
         *theta1* to angle *theta2* (in degrees).
 
+        *theta2* is unwrapped to produce the shortest arc within 360 degrees.
+        That is, if *theta2* > *theta1* + 360, the arc will be from *theta1* to
+        *theta2* - 360 and not a full circle plus some extra overlap.
+
         If *n* is provided, it is the number of spline segments to make.
         If *n* is not provided, the number of spline segments is
         determined based on the delta between *theta1* and *theta2*.
@@ -861,14 +860,15 @@ class Path(object):
            polylines, quadratic or cubic Bezier curves
            <http://www.spaceroots.org/documents/ellipse/index.html>`_.
         """
-        theta1, theta2 = np.deg2rad([theta1, theta2])
-
-        twopi = np.pi * 2.0
         halfpi = np.pi * 0.5
 
-        eta1 = np.arctan2(np.sin(theta1), np.cos(theta1))
-        eta2 = np.arctan2(np.sin(theta2), np.cos(theta2))
-        eta2 -= twopi * np.floor((eta2 - eta1) / twopi)
+        eta1 = theta1
+        eta2 = theta2 - 360 * np.floor((theta2 - theta1) / 360)
+        # Ensure 2pi range is not flattened to 0 due to floating-point errors,
+        # but don't try to expand existing 0 range.
+        if theta2 != theta1 and eta2 <= eta1:
+            eta2 += 360
+        eta1, eta2 = np.deg2rad([eta1, eta2])
 
         # number of curve segments to make
         if n is None:
@@ -927,33 +927,27 @@ class Path(object):
         Return a wedge of the unit circle from angle
         *theta1* to angle *theta2* (in degrees).
 
+        *theta2* is unwrapped to produce the shortest wedge within 360 degrees.
+        That is, if *theta2* > *theta1* + 360, the wedge will be from *theta1*
+        to *theta2* - 360 and not a full circle plus some extra overlap.
+
         If *n* is provided, it is the number of spline segments to make.
         If *n* is not provided, the number of spline segments is
         determined based on the delta between *theta1* and *theta2*.
         """
         return cls.arc(theta1, theta2, n, True)
 
-    _hatch_dict = maxdict(8)
-
-    @classmethod
-    def hatch(cls, hatchpattern, density=6):
+    @staticmethod
+    @lru_cache(8)
+    def hatch(hatchpattern, density=6):
         """
         Given a hatch specifier, *hatchpattern*, generates a Path that
         can be used in a repeated hatching pattern.  *density* is the
         number of lines per unit square.
         """
         from matplotlib.hatch import get_path
-
-        if hatchpattern is None:
-            return None
-
-        hatch_path = cls._hatch_dict.get((hatchpattern, density))
-        if hatch_path is not None:
-            return hatch_path
-
-        hatch_path = get_path(hatchpattern, density)
-        cls._hatch_dict[(hatchpattern, density)] = hatch_path
-        return hatch_path
+        return (get_path(hatchpattern, density)
+                if hatchpattern is not None else None)
 
     def clip_to_bbox(self, bbox, inside=True):
         """
@@ -1023,26 +1017,3 @@ def get_paths_extents(paths, transforms=[]):
         raise ValueError("No paths provided")
     return Bbox.from_extents(*_path.get_path_collection_extents(
         Affine2D(), paths, transforms, [], Affine2D()))
-
-
-def _define_deprecated_functions(ns):
-    from .cbook import deprecated
-
-    # The C++ functions are not meant to be used directly.
-    # Users should use the more pythonic wrappers in the Path
-    # class instead.
-    for func, alternative in [
-            ('point_in_path', 'path.Path.contains_point'),
-            ('get_path_extents', 'path.Path.get_extents'),
-            ('point_in_path_collection', 'collection.Collection.contains'),
-            ('path_in_path', 'path.Path.contains_path'),
-            ('path_intersects_path', 'path.Path.intersects_path'),
-            ('convert_path_to_polygons', 'path.Path.to_polygons'),
-            ('cleanup_path', 'path.Path.cleaned'),
-            ('points_in_path', 'path.Path.contains_points'),
-            ('clip_path_to_rect', 'path.Path.clip_to_bbox')]:
-        ns[func] = deprecated(
-            since='1.3', alternative=alternative)(getattr(_path, func))
-
-
-_define_deprecated_functions(locals())

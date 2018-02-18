@@ -1,15 +1,15 @@
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function
 
 import six
 
 import functools
 import inspect
 import os
-import sys
+from pathlib import Path
 import shutil
-import warnings
+import sys
 import unittest
+import warnings
 
 # Note - don't import nose up here - import it only as needed in functions.
 # This allows other functions here to be used by pytest-based testing suites
@@ -24,8 +24,8 @@ from matplotlib import cbook
 from matplotlib import ticker
 from matplotlib import pyplot as plt
 from matplotlib import ft2font
-from matplotlib.testing.compare import comparable_formats, compare_images, \
-     make_test_filename
+from matplotlib.testing.compare import (
+    comparable_formats, compare_images, make_test_filename)
 from . import _copy_metadata, is_called_from_pytest
 from .exceptions import ImageComparisonFailure
 
@@ -150,6 +150,7 @@ def cleanup(style=None):
         return make_cleanup
     else:
         result = make_cleanup(style)
+        # Default of mpl_test_settings fixture and image_comparison too.
         style = '_classic_test'
         return result
 
@@ -222,7 +223,11 @@ def _xfail_if_format_is_uncomparable(extension):
 
 
 def _mark_xfail_if_format_is_uncomparable(extension):
-    will_fail = extension not in comparable_formats()
+    if isinstance(extension, six.string_types):
+        will_fail = extension not in comparable_formats()
+    else:
+        # Extension might be a pytest marker instead of a plain string.
+        will_fail = extension.args[0] not in comparable_formats()
     if will_fail:
         fail_msg = 'Cannot compare %s files on this system' % extension
         import pytest
@@ -232,49 +237,33 @@ def _mark_xfail_if_format_is_uncomparable(extension):
         return extension
 
 
-class ImageComparisonDecorator(CleanupTest):
-    def __init__(self, baseline_images, extensions, tol,
-                 freetype_version, remove_text, savefig_kwargs, style):
+class _ImageComparisonBase(object):
+    """
+    Image comparison base class
+
+    This class provides *just* the comparison-related functionality and avoids
+    any code that would be specific to any testing framework.
+    """
+    def __init__(self, tol, remove_text, savefig_kwargs):
         self.func = self.baseline_dir = self.result_dir = None
-        self.baseline_images = baseline_images
-        self.extensions = extensions
         self.tol = tol
-        self.freetype_version = freetype_version
         self.remove_text = remove_text
         self.savefig_kwargs = savefig_kwargs
-        self.style = style
 
     def delayed_init(self, func):
         assert self.func is None, "it looks like same decorator used twice"
         self.func = func
         self.baseline_dir, self.result_dir = _image_directories(func)
 
-    def setup(self):
-        func = self.func
-        plt.close('all')
-        self.setup_class()
-        try:
-            matplotlib.style.use(self.style)
-            matplotlib.testing.set_font_settings_for_testing()
-            func()
-            assert len(plt.get_fignums()) == len(self.baseline_images), (
-                "Test generated {} images but there are {} baseline images"
-                .format(len(plt.get_fignums()), len(self.baseline_images)))
-        except:
-            # Restore original settings before raising errors during the update.
-            self.teardown_class()
-            raise
-
-    def teardown(self):
-        self.teardown_class()
-
     def copy_baseline(self, baseline, extension):
         baseline_path = os.path.join(self.baseline_dir, baseline)
         orig_expected_fname = baseline_path + '.' + extension
         if extension == 'eps' and not os.path.exists(orig_expected_fname):
             orig_expected_fname = baseline_path + '.pdf'
-        expected_fname = make_test_filename(os.path.join(
-            self.result_dir, os.path.basename(orig_expected_fname)), 'expected')
+        expected_fname = make_test_filename(
+            os.path.join(self.result_dir,
+                         os.path.basename(orig_expected_fname)),
+            'expected')
         if os.path.exists(orig_expected_fname):
             shutil.copyfile(orig_expected_fname, expected_fname)
         else:
@@ -292,7 +281,8 @@ class ImageComparisonDecorator(CleanupTest):
         if self.remove_text:
             remove_ticks_and_titles(fig)
 
-        actual_fname = os.path.join(self.result_dir, baseline) + '.' + extension
+        actual_fname = (
+            os.path.join(self.result_dir, baseline) + '.' + extension)
         kwargs = self.savefig_kwargs.copy()
         if extension == 'pdf':
             kwargs.setdefault('metadata',
@@ -303,6 +293,50 @@ class ImageComparisonDecorator(CleanupTest):
         expected_fname = self.copy_baseline(baseline, extension)
         _raise_on_image_difference(expected_fname, actual_fname, self.tol)
 
+
+class ImageComparisonTest(CleanupTest, _ImageComparisonBase):
+    """
+    Nose-based image comparison class
+
+    This class generates tests for a nose-based testing framework. Ideally,
+    this class would not be public, and the only publicly visible API would
+    be the :func:`image_comparison` decorator. Unfortunately, there are
+    existing downstream users of this class (e.g., pytest-mpl) so it cannot yet
+    be removed.
+    """
+    def __init__(self, baseline_images, extensions, tol,
+                 freetype_version, remove_text, savefig_kwargs, style):
+        _ImageComparisonBase.__init__(self, tol, remove_text, savefig_kwargs)
+        self.baseline_images = baseline_images
+        self.extensions = extensions
+        self.freetype_version = freetype_version
+        self.style = style
+
+    def setup(self):
+        func = self.func
+        plt.close('all')
+        self.setup_class()
+        try:
+            matplotlib.style.use(self.style)
+            matplotlib.testing.set_font_settings_for_testing()
+            func()
+            assert len(plt.get_fignums()) == len(self.baseline_images), (
+                "Test generated {} images but there are {} baseline images"
+                .format(len(plt.get_fignums()), len(self.baseline_images)))
+        except:
+            # Restore original settings before raising errors.
+            self.teardown_class()
+            raise
+
+    def teardown(self):
+        self.teardown_class()
+
+    @staticmethod
+    @cbook.deprecated('2.1',
+                      alternative='remove_ticks_and_titles')
+    def remove_text(figure):
+        remove_ticks_and_titles(figure)
+
     def nose_runner(self):
         func = self.compare
         func = _checked_on_freetype_version(self.freetype_version)(func)
@@ -312,57 +346,74 @@ class ImageComparisonDecorator(CleanupTest):
             for extension in self.extensions:
                 yield funcs[extension], idx, baseline, extension
 
-    def pytest_runner(self):
-        from pytest import mark
-
-        extensions = map(_mark_xfail_if_format_is_uncomparable,
-                         self.extensions)
-
-        if len(set(self.baseline_images)) == len(self.baseline_images):
-            @mark.parametrize("extension", extensions)
-            @mark.parametrize("idx,baseline", enumerate(self.baseline_images))
-            @_checked_on_freetype_version(self.freetype_version)
-            def wrapper(idx, baseline, extension):
-                __tracebackhide__ = True
-                self.compare(idx, baseline, extension)
-        else:
-            # Some baseline images are repeated, so run this in serial.
-            @mark.parametrize("extension", extensions)
-            @_checked_on_freetype_version(self.freetype_version)
-            def wrapper(extension):
-                __tracebackhide__ = True
-                for idx, baseline in enumerate(self.baseline_images):
-                    self.compare(idx, baseline, extension)
-
-
-        # sadly we cannot use fixture here because of visibility problems
-        # and for for obvious reason avoid `_nose.tools.with_setup`
-        wrapper.setup, wrapper.teardown = self.setup, self.teardown
-
-        return wrapper
-
     def __call__(self, func):
         self.delayed_init(func)
-        if is_called_from_pytest():
-            return _copy_metadata(func, self.pytest_runner())
-        else:
-            import nose.tools
+        import nose.tools
 
-            @nose.tools.with_setup(self.setup, self.teardown)
-            def runner_wrapper():
-                try:
-                    for case in self.nose_runner():
-                        yield case
-                except GeneratorExit:
-                    # nose bug...
-                    self.teardown()
+        @nose.tools.with_setup(self.setup, self.teardown)
+        def runner_wrapper():
+            for case in self.nose_runner():
+                yield case
 
-            return _copy_metadata(func, runner_wrapper)
+        return _copy_metadata(func, runner_wrapper)
 
 
-def image_comparison(baseline_images=None, extensions=None, tol=0,
+def _pytest_image_comparison(baseline_images, extensions, tol,
+                             freetype_version, remove_text, savefig_kwargs,
+                             style):
+    """
+    Decorate function with image comparison for pytest.
+
+    This function creates a decorator that wraps a figure-generating function
+    with image comparison code. Pytest can become confused if we change the
+    signature of the function, so we indirectly pass anything we need via the
+    `mpl_image_comparison_parameters` fixture and extra markers.
+    """
+    import pytest
+
+    extensions = map(_mark_xfail_if_format_is_uncomparable, extensions)
+
+    def decorator(func):
+        # Parameter indirection; see docstring above and comment below.
+        @pytest.mark.usefixtures('mpl_image_comparison_parameters')
+        @pytest.mark.parametrize('extension', extensions)
+        @pytest.mark.baseline_images(baseline_images)
+        # END Parameter indirection.
+        @pytest.mark.style(style)
+        @_checked_on_freetype_version(freetype_version)
+        @functools.wraps(func)
+        def wrapper(*args, **kwargs):
+            __tracebackhide__ = True
+            img = _ImageComparisonBase(tol=tol, remove_text=remove_text,
+                                       savefig_kwargs=savefig_kwargs)
+            img.delayed_init(func)
+            matplotlib.testing.set_font_settings_for_testing()
+            func(*args, **kwargs)
+
+            # Parameter indirection:
+            # This is hacked on via the mpl_image_comparison_parameters fixture
+            # so that we don't need to modify the function's real signature for
+            # any parametrization. Modifying the signature is very very tricky
+            # and likely to confuse pytest.
+            baseline_images, extension = func.parameters
+
+            assert len(plt.get_fignums()) == len(baseline_images), (
+                "Test generated {} images but there are {} baseline images"
+                .format(len(plt.get_fignums()), len(baseline_images)))
+            for idx, baseline in enumerate(baseline_images):
+                img.compare(idx, baseline, extension)
+
+        wrapper.__wrapped__ = func  # For Python 2.7.
+        return _copy_metadata(func, wrapper)
+
+    return decorator
+
+
+def image_comparison(baseline_images, extensions=None, tol=0,
                      freetype_version=None, remove_text=False,
-                     savefig_kwarg=None, style='_classic_test'):
+                     savefig_kwarg=None,
+                     # Default of mpl_test_settings fixture and cleanup too.
+                     style='_classic_test'):
     """
     Compare images generated by the test with those specified in
     *baseline_images*, which must correspond else an
@@ -370,9 +421,13 @@ def image_comparison(baseline_images=None, extensions=None, tol=0,
 
     Arguments
     ---------
-    baseline_images : list
+    baseline_images : list or None
         A list of strings specifying the names of the images generated by
         calls to :meth:`matplotlib.figure.savefig`.
+
+        If *None*, the test function must use the ``baseline_images`` fixture,
+        either as a parameter or with pytest.mark.usefixtures. This value is
+        only allowed when using pytest.
 
     extensions : [ None | list ]
 
@@ -400,9 +455,6 @@ def image_comparison(baseline_images=None, extensions=None, tol=0,
         '_classic_test' style.
 
     """
-    if baseline_images is None:
-        raise ValueError('baseline_images must be specified')
-
     if extensions is None:
         # default extensions to test
         extensions = ['png', 'pdf', 'svg']
@@ -411,10 +463,19 @@ def image_comparison(baseline_images=None, extensions=None, tol=0,
         #default no kwargs to savefig
         savefig_kwarg = dict()
 
-    return ImageComparisonDecorator(
-        baseline_images=baseline_images, extensions=extensions, tol=tol,
-        freetype_version=freetype_version, remove_text=remove_text,
-        savefig_kwargs=savefig_kwarg, style=style)
+    if is_called_from_pytest():
+        return _pytest_image_comparison(
+            baseline_images=baseline_images, extensions=extensions, tol=tol,
+            freetype_version=freetype_version, remove_text=remove_text,
+            savefig_kwargs=savefig_kwarg, style=style)
+    else:
+        if baseline_images is None:
+            raise ValueError('baseline_images must be specified')
+
+        return ImageComparisonTest(
+            baseline_images=baseline_images, extensions=extensions, tol=tol,
+            freetype_version=freetype_version, remove_text=remove_text,
+            savefig_kwargs=savefig_kwarg, style=style)
 
 
 def _image_directories(func):
@@ -425,7 +486,8 @@ def _image_directories(func):
     module_name = func.__module__
     if module_name == '__main__':
         # FIXME: this won't work for nested packages in matplotlib.tests
-        warnings.warn('test module run as script. guessing baseline image locations')
+        warnings.warn(
+            'Test module run as script. Guessing baseline image locations.')
         script_name = sys.argv[0]
         basedir = os.path.abspath(os.path.dirname(script_name))
         subdir = os.path.splitext(os.path.split(script_name)[1])[0]
@@ -439,12 +501,13 @@ def _image_directories(func):
             # multiprocess plugin or as a specific test this may be
             # missing. See https://github.com/matplotlib/matplotlib/issues/3314
         if mods.pop(0) != 'tests':
-            warnings.warn(("Module '%s' does not live in a parent module "
-                "named 'tests'. This is probably ok, but we may not be able "
-                "to guess the correct subdirectory containing the baseline "
-                "images. If things go wrong please make sure that there is "
-                "a parent directory named 'tests' and that it contains a "
-                "__init__.py file (can be empty).") % module_name)
+            warnings.warn(
+                "Module {!r} does not live in a parent module named 'tests'. "
+                "This is probably ok, but we may not be able to guess the "
+                "correct subdirectory containing the baseline images. If "
+                "things go wrong please make sure that there is a parent "
+                "directory named 'tests' and that it contains a __init__.py "
+                "file (can be empty).".format(module_name))
         subdir = os.path.join(*mods)
 
         import imp
@@ -470,9 +533,7 @@ def _image_directories(func):
 
     baseline_dir = os.path.join(basedir, 'baseline_images', subdir)
     result_dir = os.path.abspath(os.path.join('result_images', subdir))
-
-    if not os.path.exists(result_dir):
-        cbook.mkdirs(result_dir)
+    Path(result_dir).mkdir(parents=True, exist_ok=True)
 
     return baseline_dir, result_dir
 

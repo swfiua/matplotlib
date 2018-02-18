@@ -1,5 +1,4 @@
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
+from __future__ import absolute_import, division, print_function
 
 import six
 
@@ -21,7 +20,6 @@ import contextlib
 import warnings
 
 import matplotlib as mpl
-from matplotlib import cbook
 from matplotlib import rc_params_from_file, rcParamsDefault
 
 
@@ -32,12 +30,12 @@ BASE_LIBRARY_PATH = os.path.join(mpl.get_data_path(), 'stylelib')
 # Users may want multiple library paths, so store a list of paths.
 USER_LIBRARY_PATHS = [os.path.join(mpl._get_configdir(), 'stylelib')]
 STYLE_EXTENSION = 'mplstyle'
-STYLE_FILE_PATTERN = re.compile('([\S]+).%s$' % STYLE_EXTENSION)
+STYLE_FILE_PATTERN = re.compile(r'([\S]+).%s$' % STYLE_EXTENSION)
 
 
 # A list of rcParams that should not be applied from styles
 STYLE_BLACKLIST = {
-    'interactive', 'backend', 'backend.qt4', 'webagg.port',
+    'interactive', 'backend', 'backend.qt4', 'webagg.port', 'webagg.address',
     'webagg.port_retries', 'webagg.open_in_browser', 'backend_fallback',
     'toolbar', 'timezone', 'datapath', 'figure.max_open_warning',
     'savefig.directory', 'tk.window_focus', 'docstring.hardcopy'}
@@ -89,14 +87,20 @@ def use(style):
 
 
     """
-    if cbook.is_string_like(style) or hasattr(style, 'keys'):
+    style_alias = {'mpl20': 'default',
+                   'mpl15': 'classic'}
+    if isinstance(style, six.string_types) or hasattr(style, 'keys'):
         # If name is a single str or dict, make it a single element list.
         styles = [style]
     else:
         styles = style
 
+    styles = (style_alias.get(s, s)
+              if isinstance(s, six.string_types)
+              else s
+              for s in styles)
     for style in styles:
-        if not cbook.is_string_like(style):
+        if not isinstance(style, six.string_types):
             _apply_style(style)
         elif style == 'default':
             _apply_style(rcParamsDefault, warn=False)
@@ -107,10 +111,10 @@ def use(style):
                 rc = rc_params_from_file(style, use_default_template=False)
                 _apply_style(rc)
             except IOError:
-                msg = ("'%s' not found in the style library and input is "
-                       "not a valid URL or path. See `style.available` for "
-                       "list of available styles.")
-                raise IOError(msg % style)
+                raise IOError(
+                    "{!r} not found in the style library and input is not a "
+                    "valid URL or path; see `style.available` for list of "
+                    "available styles".format(style))
 
 
 @contextlib.contextmanager

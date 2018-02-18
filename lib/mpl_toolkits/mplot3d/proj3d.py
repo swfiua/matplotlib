@@ -61,7 +61,7 @@ def line2d_seg_dist(p1, p2, p0):
     x01 = np.asarray(p0[0]) - p1[0]
     y01 = np.asarray(p0[1]) - p1[1]
 
-    u = (x01*x21 + y01*y21)/float(abs(x21**2 + y21**2))
+    u = (x01*x21 + y01*y21) / (x21**2 + y21**2)
     u = np.clip(u, 0, 1)
     d = np.sqrt((x01 - u*x21)**2 + (y01 - u*y21)**2)
 
@@ -124,6 +124,16 @@ def persp_transformation(zfront, zback):
                      [0,0,-1,0]
                      ])
 
+def ortho_transformation(zfront, zback):
+    # note: w component in the resulting vector will be (zback-zfront), not 1
+    a = -(zfront + zback)
+    b = -(zfront - zback)
+    return np.array([[2,0,0,0],
+                     [0,2,0,0],
+                     [0,0,-2,0],
+                     [0,0,a,b]
+                     ])
+
 def proj_transform_vec(vec, M):
     vecw = np.dot(M, vec)
     w = vecw[3]
@@ -172,14 +182,14 @@ def proj_transform_clip(xs, ys, zs, M):
 transform = proj_transform
 
 def proj_points(points, M):
-    return list(zip(*proj_trans_points(points, M)))
+    return np.column_stack(proj_trans_points(points, M))
 
 def proj_trans_points(points, M):
-    xs, ys, zs = list(zip(*points))
+    xs, ys, zs = zip(*points)
     return proj_transform(xs, ys, zs, M)
 
 def proj_trans_clip_points(points, M):
-    xs, ys, zs = list(zip(*points))
+    xs, ys, zs = zip(*points)
     return proj_transform_clip(xs, ys, zs, M)
 
 

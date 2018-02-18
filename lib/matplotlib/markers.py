@@ -90,11 +90,11 @@ import six
 from six.moves import xrange
 
 from collections import Sized
+from numbers import Number
 
 import numpy as np
 
-from . import rcParams
-from .cbook import is_math_text, is_string_like, is_numlike
+from . import cbook, rcParams
 from .path import Path
 from .transforms import IdentityTransform, Affine2D
 
@@ -170,7 +170,7 @@ class MarkerStyle(object):
 
         Attributes
         ----------
-        markers : list of known markes
+        markers : list of known marks
 
         fillstyles : list of known fillstyles
 
@@ -259,7 +259,8 @@ class MarkerStyle(object):
               marker in self.markers):
             self._marker_function = getattr(
                 self, '_set_' + self.markers[marker])
-        elif is_string_like(marker) and is_math_text(marker):
+        elif (isinstance(marker, six.string_types)
+              and cbook.is_math_text(marker)):
             self._marker_function = self._set_mathtext_path
         elif isinstance(marker, Path):
             self._marker_function = self._set_path_marker
@@ -309,7 +310,7 @@ class MarkerStyle(object):
 
     def _set_tuple_marker(self):
         marker = self._marker
-        if is_numlike(marker[0]):
+        if isinstance(marker[0], Number):
             if len(marker) == 2:
                 numsides, rotation = marker[0], 0.0
             elif len(marker) == 3:
@@ -694,10 +695,8 @@ class MarkerStyle(object):
         self._path = self._line_marker_path
 
     def _set_hline(self):
-        self._transform = Affine2D().scale(0.5).rotate_deg(90)
-        self._snap_threshold = 1.0
-        self._filled = False
-        self._path = self._line_marker_path
+        self._set_vline()
+        self._transform = self._transform.rotate_deg(90)
 
     _tickhoriz_path = Path([[0.0, 0.0], [1.0, 0.0]])
 
@@ -727,17 +726,6 @@ class MarkerStyle(object):
         self._filled = False
         self._path = self._tickvert_path
 
-    _plus_path = Path([[-1.0, 0.0], [1.0, 0.0],
-                       [0.0, -1.0], [0.0, 1.0]],
-                      [Path.MOVETO, Path.LINETO,
-                       Path.MOVETO, Path.LINETO])
-
-    def _set_plus(self):
-        self._transform = Affine2D().scale(0.5)
-        self._snap_threshold = 1.0
-        self._filled = False
-        self._path = self._plus_path
-
     _tri_path = Path([[0.0, 0.0], [0.0, -1.0],
                       [0.0, 0.0], [0.8, 0.5],
                       [0.0, 0.0], [-0.8, 0.5]],
@@ -752,22 +740,16 @@ class MarkerStyle(object):
         self._path = self._tri_path
 
     def _set_tri_up(self):
-        self._transform = Affine2D().scale(0.5).rotate_deg(180)
-        self._snap_threshold = 5.0
-        self._filled = False
-        self._path = self._tri_path
+        self._set_tri_down()
+        self._transform = self._transform.rotate_deg(180)
 
     def _set_tri_left(self):
-        self._transform = Affine2D().scale(0.5).rotate_deg(270)
-        self._snap_threshold = 5.0
-        self._filled = False
-        self._path = self._tri_path
+        self._set_tri_down()
+        self._transform = self._transform.rotate_deg(270)
 
     def _set_tri_right(self):
-        self._transform = Affine2D().scale(0.5).rotate_deg(90)
-        self._snap_threshold = 5.0
-        self._filled = False
-        self._path = self._tri_path
+        self._set_tri_down()
+        self._transform = self._transform.rotate_deg(90)
 
     _caret_path = Path([[-1.0, 1.5], [0.0, 0.0], [1.0, 1.5]])
 
@@ -779,55 +761,45 @@ class MarkerStyle(object):
         self._joinstyle = 'miter'
 
     def _set_caretup(self):
-        self._transform = Affine2D().scale(0.5).rotate_deg(180)
-        self._snap_threshold = 3.0
-        self._filled = False
-        self._path = self._caret_path
-        self._joinstyle = 'miter'
+        self._set_caretdown()
+        self._transform = self._transform.rotate_deg(180)
 
     def _set_caretleft(self):
-        self._transform = Affine2D().scale(0.5).rotate_deg(270)
-        self._snap_threshold = 3.0
-        self._filled = False
-        self._path = self._caret_path
-        self._joinstyle = 'miter'
+        self._set_caretdown()
+        self._transform = self._transform.rotate_deg(270)
 
     def _set_caretright(self):
-        self._transform = Affine2D().scale(0.5).rotate_deg(90)
-        self._snap_threshold = 3.0
-        self._filled = False
-        self._path = self._caret_path
-        self._joinstyle = 'miter'
+        self._set_caretdown()
+        self._transform = self._transform.rotate_deg(90)
 
     _caret_path_base = Path([[-1.0, 0.0], [0.0, -1.5], [1.0, 0]])
 
     def _set_caretdownbase(self):
-        self._transform = Affine2D().scale(0.5)
-        self._snap_threshold = 3.0
-        self._filled = False
+        self._set_caretdown()
         self._path = self._caret_path_base
-        self._joinstyle = 'miter'
 
     def _set_caretupbase(self):
-        self._transform = Affine2D().scale(0.5).rotate_deg(180)
-        self._snap_threshold = 3.0
-        self._filled = False
-        self._path = self._caret_path_base
-        self._joinstyle = 'miter'
+        self._set_caretdownbase()
+        self._transform = self._transform.rotate_deg(180)
 
     def _set_caretleftbase(self):
-        self._transform = Affine2D().scale(0.5).rotate_deg(270)
-        self._snap_threshold = 3.0
-        self._filled = False
-        self._path = self._caret_path_base
-        self._joinstyle = 'miter'
+        self._set_caretdownbase()
+        self._transform = self._transform.rotate_deg(270)
 
     def _set_caretrightbase(self):
-        self._transform = Affine2D().scale(0.5).rotate_deg(90)
-        self._snap_threshold = 3.0
+        self._set_caretdownbase()
+        self._transform = self._transform.rotate_deg(90)
+
+    _plus_path = Path([[-1.0, 0.0], [1.0, 0.0],
+                       [0.0, -1.0], [0.0, 1.0]],
+                      [Path.MOVETO, Path.LINETO,
+                       Path.MOVETO, Path.LINETO])
+
+    def _set_plus(self):
+        self._transform = Affine2D().scale(0.5)
+        self._snap_threshold = 1.0
         self._filled = False
-        self._path = self._caret_path_base
-        self._joinstyle = 'miter'
+        self._path = self._plus_path
 
     _x_path = Path([[-1.0, -1.0], [1.0, 1.0],
                     [-1.0, 1.0], [1.0, -1.0]],

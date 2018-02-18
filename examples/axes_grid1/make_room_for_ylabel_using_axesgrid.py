@@ -1,3 +1,9 @@
+"""
+===================================
+Make Room For Ylabel Using Axesgrid
+===================================
+
+"""
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from mpl_toolkits.axes_grid1.axes_divider import make_axes_area_auto_adjustable
 
@@ -38,7 +44,7 @@ if __name__ == "__main__":
         divider = make_axes_locatable(ax1)
 
         ax2 = divider.new_horizontal("100%", pad=0.3, sharey=ax1)
-        ax2.tick_params(labelleft="off")
+        ax2.tick_params(labelleft=False)
         fig.add_axes(ax2)
 
         divider.add_auto_adjustable_area(use_axes=[ax1], pad=0.1,
