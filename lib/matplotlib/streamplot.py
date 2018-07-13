@@ -2,13 +2,9 @@
 Streamline plotting for 2D vector fields.
 
 """
-from __future__ import (absolute_import, division, print_function,
-                        unicode_literals)
-
-import six
-from six.moves import xrange
 
 import numpy as np
+
 import matplotlib
 import matplotlib.cm as cm
 import matplotlib.colors as mcolors
@@ -553,7 +549,7 @@ def _integrate_rk12(x0, y0, dmap, f, maxlength):
                 dmap.update_trajectory(xi, yi)
             except InvalidIndexError:
                 break
-            if (stotal + ds) > maxlength:
+            if stotal + ds > maxlength:
                 break
             stotal += ds
 
@@ -607,11 +603,11 @@ def interpgrid(a, xi, yi):
         x = int(xi)
         y = int(yi)
         # conditional is faster than clipping for integers
-        if x == (Nx - 2):
+        if x == (Nx - 1):
             xn = x
         else:
             xn = x + 1
-        if y == (Ny - 2):
+        if y == (Ny - 1):
             yn = y
         else:
             yn = y + 1
@@ -648,7 +644,7 @@ def _gen_starting_points(shape):
     x, y = 0, 0
     i = 0
     direction = 'right'
-    for i in xrange(nx * ny):
+    for i in range(nx * ny):
 
         yield x, y
 

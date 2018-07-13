@@ -4,7 +4,6 @@ Basic Units
 ===========
 
 """
-import six
 
 import math
 
@@ -26,13 +25,13 @@ class ProxyDelegate(object):
 
 
 class TaggedValueMeta(type):
-    def __init__(cls, name, bases, dict):
-        for fn_name in cls._proxies:
+    def __init__(self, name, bases, dict):
+        for fn_name in self._proxies:
             try:
-                dummy = getattr(cls, fn_name)
+                dummy = getattr(self, fn_name)
             except AttributeError:
-                setattr(cls, fn_name,
-                        ProxyDelegate(fn_name, cls._proxies[fn_name]))
+                setattr(self, fn_name,
+                        ProxyDelegate(fn_name, self._proxies[fn_name]))
 
 
 class PassThroughProxy(object):
@@ -110,7 +109,7 @@ class ConvertAllProxy(PassThroughProxy):
         return TaggedValue(ret, ret_unit)
 
 
-class TaggedValue(six.with_metaclass(TaggedValueMeta)):
+class TaggedValue(metaclass=TaggedValueMeta):
 
     _proxies = {'__add__': ConvertAllProxy,
                 '__sub__': ConvertAllProxy,
@@ -156,7 +155,7 @@ class TaggedValue(six.with_metaclass(TaggedValueMeta)):
         return TaggedValue(array, self.unit)
 
     def __repr__(self):
-        return 'TaggedValue(' + repr(self.value) + ', ' + repr(self.unit) + ')'
+        return 'TaggedValue({!r}, {!r})'.format(self.value, self.unit)
 
     def __str__(self):
         return str(self.value) + ' in ' + str(self.unit)
@@ -298,13 +297,21 @@ secs.add_conversion_factor(minutes, 1/60.0)
 
 # radians formatting
 def rad_fn(x, pos=None):
-    n = int((x / np.pi) * 2.0 + 0.25)
+    if x >= 0:
+        n = int((x / np.pi) * 2.0 + 0.25)
+    else:
+        n = int((x / np.pi) * 2.0 - 0.25)
+
     if n == 0:
         return '0'
     elif n == 1:
         return r'$\pi/2$'
     elif n == 2:
         return r'$\pi$'
+    elif n == -1:
+        return r'$-\pi/2$'
+    elif n == -2:
+        return r'$-\pi$'
     elif n % 2 == 0:
         return r'$%s\pi$' % (n//2,)
     else:

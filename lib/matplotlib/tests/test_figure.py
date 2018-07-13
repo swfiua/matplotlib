@@ -1,6 +1,3 @@
-from __future__ import absolute_import, division, print_function
-
-import os
 import sys
 import warnings
 
@@ -216,7 +213,7 @@ def test_iterability_axes_argument():
 
     # This is a regression test for matplotlib/matplotlib#3196. If one of the
     # arguments returned by _as_mpl_axes defines __getitem__ but is not
-    # iterable, this would raise an execption. This is because we check
+    # iterable, this would raise an exception. This is because we check
     # whether the arguments are iterable, and if so we try and convert them
     # to a tuple. However, the ``iterable`` function returns True if
     # __getitem__ is present, but some classes can define __getitem__ without
@@ -224,8 +221,7 @@ def test_iterability_axes_argument():
     # case it fails.
 
     class MyAxes(Axes):
-        def __init__(self, *args, **kwargs):
-            kwargs.pop('myclass', None)
+        def __init__(self, *args, myclass=None, **kwargs):
             return Axes.__init__(self, *args, **kwargs)
 
     class MyClass(object):
@@ -377,8 +373,46 @@ def test_figure_repr():
     assert repr(fig) == "<Figure size 100x200 with 0 Axes>"
 
 
+def test_warn_cl_plus_tl():
+    fig, ax = plt.subplots(constrained_layout=True)
+    with pytest.warns(UserWarning):
+        # this should warn,
+        fig.subplots_adjust(top=0.8)
+    assert not(fig.get_constrained_layout())
+
+
 @pytest.mark.skipif(sys.version_info < (3, 6), reason="requires Python 3.6+")
 @pytest.mark.parametrize("fmt", ["png", "pdf", "ps", "eps", "svg"])
-def test_fspath(fmt):
+def test_fspath(fmt, tmpdir):
     from pathlib import Path
-    plt.savefig(Path(os.devnull), format=fmt)
+    out = Path(tmpdir, "test.{}".format(fmt))
+    plt.savefig(out)
+    with out.open("rb") as file:
+        # All the supported formats include the format name (case-insensitive)
+        # in the first 100 bytes.
+        assert fmt.encode("ascii") in file.read(100).lower()
+
+
+def test_tightbbox():
+    fig, ax = plt.subplots()
+    ax.set_xlim(0, 1)
+    t = ax.text(1., 0.5, 'This dangles over end')
+    renderer = fig.canvas.get_renderer()
+    x1Nom0 = 9.035  # inches
+    assert np.abs(t.get_tightbbox(renderer).x1 - x1Nom0 * fig.dpi) < 2
+    assert np.abs(ax.get_tightbbox(renderer).x1 - x1Nom0 * fig.dpi) < 2
+    assert np.abs(fig.get_tightbbox(renderer).x1 - x1Nom0) < 0.05
+    assert np.abs(fig.get_tightbbox(renderer).x0 - 0.679) < 0.05
+    # now exclude t from the tight bbox so now the bbox is quite a bit
+    # smaller
+    t.set_in_layout(False)
+    x1Nom = 7.333
+    assert np.abs(ax.get_tightbbox(renderer).x1 - x1Nom * fig.dpi) < 2
+    assert np.abs(fig.get_tightbbox(renderer).x1 - x1Nom) < 0.05
+
+    t.set_in_layout(True)
+    x1Nom = 7.333
+    assert np.abs(ax.get_tightbbox(renderer).x1 - x1Nom0 * fig.dpi) < 2
+    # test bbox_extra_artists method...
+    assert np.abs(ax.get_tightbbox(renderer,
+                        bbox_extra_artists=[]).x1 - x1Nom * fig.dpi) < 2

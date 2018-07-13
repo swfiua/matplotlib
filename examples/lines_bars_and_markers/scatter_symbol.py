@@ -3,6 +3,8 @@
 Scatter Symbol
 ==============
 
+Scatter plot with clover symbols.
+
 """
 import matplotlib.pyplot as plt
 import numpy as np
@@ -20,5 +22,5 @@ plt.scatter(x, y, s, c="g", alpha=0.5, marker=r'$\clubsuit$',
             label="Luck")
 plt.xlabel("Leprechauns")
 plt.ylabel("Gold")
-plt.legend(loc=2)
+plt.legend(loc='upper left')
 plt.show()

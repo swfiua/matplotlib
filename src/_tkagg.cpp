@@ -203,9 +203,50 @@ static PyObject *_tkinit(PyObject *self, PyObject *args)
     return Py_None;
 }
 
+static PyObject *mpl_tk_blit(PyObject *self, PyObject *args)
+{
+    Tcl_Interp *interp;
+    char const *photo_name;
+    int height, width;
+    unsigned char *data_ptr;
+    int o0, o1, o2, o3;
+    int x1, x2, y1, y2;
+    Tk_PhotoHandle photo;
+    Tk_PhotoImageBlock block;
+    if (!PyArg_ParseTuple(args, "ns(iin)(iiii)(iiii):blit",
+                          &interp, &photo_name,
+                          &height, &width, &data_ptr,
+                          &o0, &o1, &o2, &o3,
+                          &x1, &x2, &y1, &y2)) {
+        goto exit;
+    }
+    if (!(photo = TK_FIND_PHOTO(interp, photo_name))) {
+        PyErr_SetString(PyExc_ValueError, "Failed to extract Tk_PhotoHandle");
+        goto exit;
+    }
+    block.pixelPtr = data_ptr + 4 * ((height - y2) * width + x1);
+    block.width = x2 - x1;
+    block.height = y2 - y1;
+    block.pitch = 4 * width;
+    block.pixelSize = 4;
+    block.offset[0] = o0;
+    block.offset[1] = o1;
+    block.offset[2] = o2;
+    block.offset[3] = o3;
+    TK_PHOTO_PUT_BLOCK_NO_COMPOSITE(
+        photo, &block, x1, height - y2, x2 - x1, y2 - y1);
+exit:
+    if (PyErr_Occurred()) {
+        return NULL;
+    } else {
+        Py_RETURN_NONE;
+    }
+}
+
 static PyMethodDef functions[] = {
     /* Tkinter interface stuff */
     { "tkinit", (PyCFunction)_tkinit, 1 },
+    { "blit", (PyCFunction)mpl_tk_blit, 1 },
     { NULL, NULL } /* sentinel */
 };
 
@@ -322,13 +363,10 @@ int load_tkinter_funcs(void)
 #else  // not Windows
 
 /*
- * On Unix, we can get the TCL and Tk synbols from the tkinter module, because
+ * On Unix, we can get the TCL and Tk symbols from the tkinter module, because
  * tkinter uses these symbols, and the symbols are therefore visible in the
  * tkinter dynamic library (module).
  */
-#if PY_MAJOR_VERSION >= 3
-#define TKINTER_PKG "tkinter"
-#define TKINTER_MOD "_tkinter"
 // From module __file__ attribute to char *string for dlopen.
 char *fname2char(PyObject *fname)
 {
@@ -339,12 +377,6 @@ char *fname2char(PyObject *fname)
     }
     return PyBytes_AsString(bytes);
 }
-#else
-#define TKINTER_PKG "Tkinter"
-#define TKINTER_MOD "tkinter"
-// From module __file__ attribute to char *string for dlopen
-#define fname2char(s) (PyString_AsString(s))
-#endif
 
 #include <dlfcn.h>
 
@@ -402,11 +434,11 @@ int load_tkinter_funcs(void)
     PyErr_Clear();
 
     // Now try finding the tkinter compiled module
-    pModule = PyImport_ImportModule(TKINTER_PKG);
+    pModule = PyImport_ImportModule("tkinter");
     if (pModule == NULL) {
         goto exit;
     }
-    pSubmodule = PyObject_GetAttrString(pModule, TKINTER_MOD);
+    pSubmodule = PyObject_GetAttrString(pModule, "_tkinter");
     if (pSubmodule == NULL) {
         goto exit;
     }
@@ -453,9 +485,9 @@ exit:
 }
 #endif // end not Windows
 
-#if PY_MAJOR_VERSION >= 3
-static PyModuleDef _tkagg_module = { PyModuleDef_HEAD_INIT, "_tkagg", "",   -1,  functions,
-                                     NULL,                  NULL,     NULL, NULL };
+static PyModuleDef _tkagg_module = {
+    PyModuleDef_HEAD_INIT, "_tkagg", "", -1, functions, NULL, NULL, NULL, NULL
+};
 
 PyMODINIT_FUNC PyInit__tkagg(void)
 {
@@ -465,11 +497,3 @@ PyMODINIT_FUNC PyInit__tkagg(void)
 
     return (load_tkinter_funcs() == 0) ? m : NULL;
 }
-#else
-PyMODINIT_FUNC init_tkagg(void)
-{
-    Py_InitModule("_tkagg", functions);
-
-    load_tkinter_funcs();
-}
-#endif

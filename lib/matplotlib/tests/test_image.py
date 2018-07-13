@@ -1,11 +1,8 @@
-from __future__ import absolute_import, division, print_function
-
-import six
-
 from copy import copy
 import io
 import os
 import sys
+import urllib.request
 import warnings
 
 import numpy as np
@@ -105,8 +102,7 @@ def test_figimage1():
 
 
 def test_image_python_io():
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
+    fig, ax = plt.subplots()
     ax.plot([1,2,3])
     buffer = io.BytesIO()
     fig.savefig(buffer)
@@ -118,7 +114,7 @@ def test_image_python_io():
 def test_imread_pil_uint16():
     img = plt.imread(os.path.join(os.path.dirname(__file__),
                      'baseline_images', 'test_image', 'uint16.tif'))
-    assert (img.dtype == np.uint16)
+    assert img.dtype == np.uint16
     assert np.sum(img) == 134184960
 
 
@@ -285,8 +281,7 @@ def test_image_clip():
 def test_image_cliprect():
     import matplotlib.patches as patches
 
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
+    fig, ax = plt.subplots()
     d = [[1,2],[3,4]]
 
     im = ax.imshow(d, extent=(0,5,0,5))
@@ -297,12 +292,8 @@ def test_image_cliprect():
 
 @image_comparison(baseline_images=['imshow'], remove_text=True, style='mpl20')
 def test_imshow():
-    import numpy as np
-    import matplotlib.pyplot as plt
-
-    fig = plt.figure()
+    fig, ax = plt.subplots()
     arr = np.arange(100).reshape((10, 10))
-    ax = fig.add_subplot(111)
     ax.imshow(arr, interpolation="bilinear", extent=(1,2,1,2))
     ax.set_xlim(0,3)
     ax.set_ylim(0,3)
@@ -329,8 +320,7 @@ def test_image_shift():
     tMin=734717.945208
     tMax=734717.946366
 
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
+    fig, ax = plt.subplots()
     ax.imshow(imgData, norm=LogNorm(), interpolation='none',
               extent=(tMin, tMax, 1, 100))
     ax.set_aspect('auto')
@@ -368,8 +358,7 @@ def test_image_edges():
                   remove_text=True,
                   style='mpl20')
 def test_image_composite_background():
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
+    fig, ax = plt.subplots()
     arr = np.arange(12).reshape(4, 3)
     ax.imshow(arr, extent=[0, 2, 15, 0])
     ax.imshow(arr, extent=[4, 6, 15, 0])
@@ -384,8 +373,7 @@ def test_image_composite_alpha():
     Tests that the alpha value is recognized and correctly applied in the
     process of compositing images together.
     """
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
+    fig, ax = plt.subplots()
     arr = np.zeros((11, 21, 4))
     arr[:, :, 0] = 1
     arr[:, :, 3] = np.concatenate((np.arange(0, 1.1, 0.1), np.arange(0, 1, 0.1)[::-1]))
@@ -413,9 +401,6 @@ def test_rasterize_dpi():
     # when images end up in the wrong place in case of non-standard dpi setting.
     # Instead of high-res rasterization i use low-res.  Therefore the fact that the
     # resolution is non-standard is easily checked by image_comparison.
-    import numpy as np
-    import matplotlib.pyplot as plt
-
     img = np.asarray([[1, 2], [3, 4]])
 
     fig, axes = plt.subplots(1, 3, figsize = (3, 1))
@@ -445,7 +430,7 @@ def test_bbox_image_inverted():
     # This is just used to produce an image to feed to BboxImage
     image = np.arange(100).reshape((10, 10))
 
-    ax = plt.subplot(111)
+    fig, ax = plt.subplots()
     bbox_im = BboxImage(
         TransformedBbox(Bbox([[100, 100], [0, 0]]), ax.transData))
     bbox_im.set_data(image)
@@ -470,8 +455,7 @@ def test_get_window_extent_for_AxisImage():
 
     im = np.array([[0.25, 0.75, 1.0, 0.75], [0.1, 0.65, 0.5, 0.4],
                    [0.6, 0.3, 0.0, 0.2], [0.7, 0.9, 0.4, 0.6]])
-    fig = plt.figure(figsize=(10, 10), dpi=100)
-    ax = plt.subplot()
+    fig, ax = plt.subplots(figsize=(10, 10), dpi=100)
     ax.set_position([0, 0, 1, 1])
     ax.set_xlim(0, 1)
     ax.set_ylim(0, 1)
@@ -492,8 +476,7 @@ def test_zoom_and_clip_upper_origin():
     image = np.arange(100)
     image = image.reshape((10, 10))
 
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
+    fig, ax = plt.subplots()
     ax.imshow(image)
     ax.set_ylim(2.0, -0.5)
     ax.set_xlim(-0.5, 2.0)
@@ -509,6 +492,18 @@ def test_nonuniformimage_setnorm():
     ax = plt.gca()
     im = NonUniformImage(ax)
     im.set_norm(plt.Normalize())
+
+
+@needs_pillow
+def test_jpeg_2d():
+    # smoke test that mode-L pillow images work.
+    imd = np.ones((10, 10), dtype='uint8')
+    for i in range(10):
+        imd[i, :] = np.linspace(0.0, 1.0, 10) * 255
+    im = Image.new('L', (10, 10))
+    im.putdata(imd.flatten())
+    fig, ax = plt.subplots()
+    ax.imshow(im)
 
 
 @needs_pillow
@@ -577,12 +572,6 @@ def test_pcolorimage_setdata():
     assert im._A[0, 0] == im._Ax[0] == im._Ay[0] == 0, 'value changed'
 
 
-def test_pcolorimage_extent():
-    im = plt.hist2d([1, 2, 3], [3, 5, 6],
-                    bins=[[0, 3, 7], [1, 2, 3]])[-1]
-    assert im.get_extent() == (0, 7, 1, 3)
-
-
 def test_minimized_rasterized():
     # This ensures that the rasterized content in the colorbars is
     # only as thick as the colorbar, and doesn't extend to other parts
@@ -618,9 +607,9 @@ def test_minimized_rasterized():
 
 @pytest.mark.network
 def test_load_from_url():
-    req = six.moves.urllib.request.urlopen(
-        "http://matplotlib.org/_static/logo_sidebar_horiz.png")
-    plt.imread(req)
+    url = "http://matplotlib.org/_static/logo_sidebar_horiz.png"
+    plt.imread(url)
+    plt.imread(urllib.request.urlopen(url))
 
 
 @image_comparison(baseline_images=['log_scale_image'],
@@ -630,9 +619,7 @@ def test_log_scale_image(recwarn):
     Z = np.zeros((10, 10))
     Z[::2] = 1
 
-    fig = plt.figure()
-    ax = fig.add_subplot(111)
-
+    fig, ax = plt.subplots()
     ax.imshow(Z, extent=[1, 100, 1, 100], cmap='viridis',
               vmax=1, vmin=-1)
     ax.set_yscale('log')
@@ -783,7 +770,6 @@ def test_imshow_masked_interpolation():
     N = 20
     n = colors.Normalize(vmin=0, vmax=N*N-1)
 
-    # data = np.random.random((N, N))*N*N
     data = np.arange(N*N, dtype='float').reshape(N, N)
 
     data[5, 5] = -1
@@ -855,7 +841,18 @@ def test_imshow_bignumbers():
     img = np.array([[1, 2, 1e12],[3, 1, 4]], dtype=np.uint64)
     pc = ax.imshow(img)
     pc.set_clim(0, 5)
-    plt.show()
+
+
+@image_comparison(baseline_images=['imshow_bignumbers_real'],
+                  remove_text=True, style='mpl20',
+                  extensions=['png'])
+def test_imshow_bignumbers_real():
+    # putting a big number in an array of integers shouldn't
+    # ruin the dynamic range of the resolved bits.
+    fig, ax = plt.subplots()
+    img = np.array([[2., 1., 1.e22],[4., 1., 3.]])
+    pc = ax.imshow(img)
+    pc.set_clim(0, 5)
 
 
 @pytest.mark.parametrize(
@@ -880,19 +877,13 @@ def test_empty_imshow(make_norm):
 def test_imshow_float128():
     fig, ax = plt.subplots()
     ax.imshow(np.zeros((3, 3), dtype=np.longdouble))
+    # Ensure that drawing doesn't cause crash
+    fig.canvas.draw()
 
 
 def test_imshow_bool():
     fig, ax = plt.subplots()
     ax.imshow(np.array([[True, False], [False, True]], dtype=bool))
-
-
-def test_imshow_deprecated_interd_warn():
-    im = plt.imshow([[1, 2], [3, np.nan]])
-    for k in ('_interpd', '_interpdr', 'iterpnames'):
-        with warnings.catch_warnings(record=True) as warns:
-            getattr(im, k)
-        assert len(warns) == 1
 
 
 def test_full_invalid():
@@ -913,8 +904,8 @@ def test_composite(fmt, counted, composite_image, count):
     # (on a single set of axes) into a single composite image.
     X, Y = np.meshgrid(np.arange(-5, 5, 1), np.arange(-5, 5, 1))
     Z = np.sin(Y ** 2)
-    fig = plt.figure()
-    ax = fig.add_subplot(1, 1, 1)
+
+    fig, ax = plt.subplots()
     ax.set_xlim(0, 3)
     ax.imshow(Z, extent=[0, 1, 0, 1])
     ax.imshow(Z[::-1], extent=[2, 3, 0, 1])
